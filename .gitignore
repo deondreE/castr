@@ -1,0 +1,17 @@
+build
+*.exe
+*.obj
+*.pdb
+*.ilk
+
+*.log
+*.err
+
+.vscode/
+
+.vs/
+*.suo
+*.user
+*.sln
+*.vsxproj
+*.vcxproj.filters
