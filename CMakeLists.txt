@@ -14,6 +14,8 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
+set(FFMPEG_PATH "${PROJECT_SOURCE_DIR}/vendor/ffmpeg")
+
 add_subdirectory(vendor/glfw)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -29,13 +31,18 @@ set(SOURCES
   src/main.c
   src/utils.c
   src/logger.c
+  src/encoder.c
   vendor/glad/src/glad.c
 )
 
 set(HEADERS
   include/utils.h
   include/logger.h
+  include/encoder.h
 )
+
+include_directories(${FFMPEG_PATH}/include)
+link_directories(${FFMPEG_PATH}/lib)
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
@@ -46,10 +53,20 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 if (MSVC)
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${PROJECT_SOURCE_DIR}/vendor/ffmpeg/bin"
+      "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+  )
+
   target_link_libraries(${PROJECT_NAME} PRIVATE
     d3d11
     dxgi
     dxguid
+    avcodec
+    avformat
+    avutil
+    swscale
   )
 endif()
 

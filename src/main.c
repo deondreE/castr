@@ -3,6 +3,7 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include "logger.h"
+#include "encoder.h"
 
 #define GL_BGRA 0x80E1
 
@@ -95,11 +96,13 @@ int main(void) {
 
     glfwMakeContextCurrent(window);
 
+    
     if (!init_capture()) {
         log_fatal("Capture init failed");
         return 0;
     }
-
+    init_encoder("output.h264", screen_w, screen_h);
+    
     unsigned char* buffer = malloc(screen_w * screen_h * 4);
 
       GLuint tex_id;
@@ -112,6 +115,8 @@ int main(void) {
         if (capture_frame(buffer, screen_w, screen_h)) {
             glBindTexture(GL_TEXTURE_2D, tex_id);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, screen_w, screen_h, GL_BGRA, GL_UNSIGNED_BYTE, buffer);
+
+            encode_frame(buffer);
         }
         
         glClear(GL_COLOR_BUFFER_BIT);
