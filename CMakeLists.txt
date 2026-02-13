@@ -14,19 +14,14 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
+add_subdirectory(vendor/glfw)
+
 if (CMAKE_BUILD_TYPE STREQUAL "Release")
   add_compile_definitions(CASTR_RELEASE)
 endif()
 
-add_subdirectory(vendor/glfw)
-
 if (MSVC)
-  add_compile_options(/W4 /02)
-
-  add_compile_options(/Wall)
-
-  # add_compile_options(/WX)
-
+  add_compile_options(/W4)
   message(STATUS "Configuring for msvc compiler")
 endif()
 
@@ -34,6 +29,7 @@ set(SOURCES
   src/main.c
   src/utils.c
   src/logger.c
+  vendor/glad/src/glad.c
 )
 
 set(HEADERS
@@ -41,21 +37,24 @@ set(HEADERS
   include/logger.h
 )
 
-
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_SOURCE_DIR}/vendor/glfw/include
+  ${PROJECT_SOURCE_DIR}/vendor/glad/include
 )
 
 if (MSVC)
   target_link_libraries(${PROJECT_NAME} PRIVATE
     d3d11
     dxgi
+    dxguid
   )
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
+find_package(OpenGL REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE glfw OpenGL::GL)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
