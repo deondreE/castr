@@ -149,6 +149,26 @@ unsigned __stdcall encoder_thread_func(void* arg) {
     return 0;
 }
 
+GLuint fbo, canvas_tex;
+
+void init_compositor(int w, int h) {
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+    glGenTextures(1, &canvas_tex);
+    glBindTexture(GL_TEXTURE_2D, canvas_tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, canvas_tex, 0);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        log_error("FBO failed to init!");
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 int main(void) {
     log_info("Starting Castr....");
 
@@ -192,21 +212,47 @@ int main(void) {
             glBindTexture(GL_TEXTURE_2D, tex_id);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, screen_w, screen_h, GL_BGRA, GL_UNSIGNED_BYTE, g_state.frame_buffer);
             
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+            glViewport(0, 0, screen_w, screen_h);
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, tex_id);
+            glBegin()
+                glTexCoord2f(0, 1); glVertex2f(-1, -1);
+                glTexCoord2f(1, 1); glVertex2f(1, -1);
+                glTexCoord2f(1, 0); glVertex2f(1, 1);
+                glTexCoord2f(0, 0); glVertex2f(-1, 1);
+            glEnd();
+
+            glDisable(GL_TEXTURE_2D);
+            glColor4f(1.0f, 0.0f, 0.0f, 0.5f);
+             glBegin(GL_QUADS);
+                glVertex2f(0.7f, 0.7f);   // Top-Right area
+                glVertex2f(0.95f, 0.7f);
+                glVertex2f(0.95f, 0.95f);
+                glVertex2f(0.7f, 0.95f);
+            glEnd();
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
             // encode_frame(g_state.frame_buffer);
 
+            g_state.encoder_has_work = true;
+            WakeAllConditionVariable(&g_state.data_ready);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
             g_state.has_new_frame = false;
         }
         LeaveCriticalSection(&g_state.lock);
 
+        glViewport(0, 0, screen_w, screen_h);
         glClear(GL_COLOR_BUFFER_BIT);
+        glBindTexture(GL_TEXTURE_2D, canvas_tex);
         glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, tex_id);
-        
         glBegin(GL_QUADS);
-            glTexCoord2f(0, 1); glVertex2f(-1, -1);
-            glTexCoord2f(1, 1); glVertex2f(1, -1);
-            glTexCoord2f(1, 0); glVertex2f(1, 1);
-            glTexCoord2f(0, 0); glVertex2f(-1, 1);
+            glTexCoord2f(0, 0); glVertex2f(-1, -1);
+            glTexCoord2f(1, 0); glVertex2f(1, -1);
+            glTexCoord2f(1, 1); glVertex2f(1, 1);
+            glTexCoord2f(0, 1); glVertex2f(-1, 1);
         glEnd();
 
         glfwSwapBuffers(window);
