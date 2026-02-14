@@ -32,6 +32,7 @@ set(SOURCES
   src/utils.c
   src/logger.c
   src/encoder.c
+  src/ui.c
   vendor/glad/src/glad.c
 )
 
@@ -40,6 +41,7 @@ set(HEADERS
   include/logger.h
   include/encoder.h
   include/threading.h
+  include/ui.h
 )
 
 include_directories(${FFMPEG_PATH}/include)
