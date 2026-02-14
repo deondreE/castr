@@ -39,6 +39,7 @@ set(HEADERS
   include/utils.h
   include/logger.h
   include/encoder.h
+  include/threading.h
 )
 
 include_directories(${FFMPEG_PATH}/include)

@@ -2,10 +2,16 @@
 #include <GLFW/glfw3.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <process.h>
+#include <windows.h>
+#include <stdbool.h>
 #include "logger.h"
 #include "encoder.h"
+#include "threading.h"
 
+#ifndef GL_BGRA
 #define GL_BGRA 0x80E1
+#endif
 
 typedef struct {
     ID3D11Device* device;
@@ -72,13 +78,78 @@ int capture_frame(unsigned char* out_data, int width, int height) {
     return 1;
 }
 
-int main(void) {
-    //  return -1;
-    // }if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    //     log_fatal("Failed to initialize GLAD");
-       
-    GLFWwindow* window;
+SharedState g_state = {0};
 
+void init_shared_state(int w, int h) {
+    g_state.width = w;
+    g_state.height = h;
+    g_state.running = true;
+    g_state.frame_buffer = malloc(w * h * 4);
+    InitializeCriticalSection(&g_state.lock);
+    InitializeConditionVariable(&g_state.data_ready);
+}
+
+void cleanup_shared_state() {
+    g_state.running = false;
+    
+    DeleteCriticalSection(&g_state.lock);
+    
+    if (g_state.frame_buffer) {
+        free(g_state.frame_buffer);
+        g_state.frame_buffer = NULL;
+    }
+}
+
+unsigned __stdcall capture_thread_func(void* arg) {
+    while (g_state.running) {
+        static unsigned char* temp_buf = NULL;
+        if (!temp_buf) temp_buf = malloc(g_state.width * g_state.height * 4);
+
+        if (capture_frame(temp_buf, g_state.width, g_state.height)) {
+            EnterCriticalSection(&g_state.lock);
+            memcpy(g_state.frame_buffer, temp_buf, g_state.width * g_state.height * 4);
+            g_state.has_new_frame = true; 
+            g_state.encoder_has_work = true;
+            LeaveCriticalSection(&g_state.lock);
+
+            WakeAllConditionVariable(&g_state.data_ready);
+        }
+        Sleep(0);
+    }
+    return 0;
+}
+
+unsigned __stdcall encoder_thread_func(void* arg) {
+    log_info("Encoder thread started.");
+
+    unsigned char* local_enc_buf = malloc(g_state.width * g_state.height * 4);
+
+    while (g_state.running) {
+        EnterCriticalSection(&g_state.lock);
+
+        while (g_state.running && !g_state.encoder_has_work) {
+            SleepConditionVariableCS(&g_state.data_ready, &g_state.lock, INFINITE);
+        }
+
+        if (!g_state.running) {
+            LeaveCriticalSection(&g_state.lock);
+            break;
+        }
+
+        memcpy(local_enc_buf, g_state.frame_buffer, g_state.width * g_state.height * 4);
+        g_state.encoder_has_work = false;
+
+        LeaveCriticalSection(&g_state.lock);
+
+        encode_frame(local_enc_buf);
+    }
+
+    free(local_enc_buf);
+    log_info("Encoder thread exiting.");
+    return 0;
+}
+
+int main(void) {
     log_info("Starting Castr....");
 
     if (!glfwInit()) {
@@ -88,37 +159,45 @@ int main(void) {
     int screen_w = 1920;
     int screen_h = 1080;
 
-    window = glfwCreateWindow(screen_w, screen_h, "Castr Window", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "Castr Engine - Multi-threaded", NULL, NULL);
     if (!window) {
         glfwTerminate();
         return -1;
     }
-
     glfwMakeContextCurrent(window);
 
-    
     if (!init_capture()) {
         log_fatal("Capture init failed");
-        return 0;
+        return -1;
     }
     init_encoder("output.h264", screen_w, screen_h);
-    
-    unsigned char* buffer = malloc(screen_w * screen_h * 4);
 
-      GLuint tex_id;
+    init_shared_state(screen_w, screen_h);
+
+    _beginthreadex(NULL, 0, capture_thread_func, NULL, 0, NULL);
+    _beginthreadex(NULL, 0, encoder_thread_func, NULL, 0, NULL);
+
+    GLuint tex_id;
     glGenTextures(1, &tex_id);
     glBindTexture(GL_TEXTURE_2D, tex_id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screen_w, screen_h, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
 
     while (!glfwWindowShouldClose(window)) {
-        if (capture_frame(buffer, screen_w, screen_h)) {
-            glBindTexture(GL_TEXTURE_2D, tex_id);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, screen_w, screen_h, GL_BGRA, GL_UNSIGNED_BYTE, buffer);
+        glfwPollEvents();
 
-            encode_frame(buffer);
+        EnterCriticalSection(&g_state.lock);
+        if (g_state.has_new_frame) {
+            glBindTexture(GL_TEXTURE_2D, tex_id);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, screen_w, screen_h, GL_BGRA, GL_UNSIGNED_BYTE, g_state.frame_buffer);
+            
+            // encode_frame(g_state.frame_buffer);
+
+            g_state.has_new_frame = false;
         }
-        
+        LeaveCriticalSection(&g_state.lock);
+
         glClear(GL_COLOR_BUFFER_BIT);
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, tex_id);
@@ -131,10 +210,14 @@ int main(void) {
         glEnd();
 
         glfwSwapBuffers(window);
-        glfwPollEvents();
     }
 
-    free(buffer);
+    g_state.running = false;
+    Sleep(100);
+    cleanup_shared_state();
+    glfwDestroyWindow(window);
     glfwTerminate();
+    
+    log_info("Castr shutdown cleanly.");
     return 0;
 }
