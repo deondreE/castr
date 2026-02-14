@@ -7,9 +7,9 @@
 #include <windows.h>
 #include <stdbool.h>
 #include "logger.h"
+#include "font.h"
 #include "encoder.h"
 #include "ui.h"
-
 #include "threading.h"
 
 #ifndef GL_BGRA
@@ -32,6 +32,7 @@ CaptureState g_cap = {0};
 int init_capture() {
     D3D_FEATURE_LEVEL fl;
     HRESULT hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, NULL, 0, D3D11_SDK_VERSION, &g_cap.device, &fl, &g_cap.context);
+    if (FAILED(hr)) return 0;
     
     IDXGIDevice* dxgiDevice = NULL;
     g_cap.device->lpVtbl->QueryInterface(g_cap.device, &IID_IDXGIDevice, (void**)&dxgiDevice);
@@ -53,7 +54,7 @@ int init_capture() {
 int capture_frame(unsigned char* out_data, int width, int height) {
     IDXGIResource* res = NULL;
     DXGI_OUTDUPL_FRAME_INFO info;
-    HRESULT hr = g_cap.duplication->lpVtbl->AcquireNextFrame(g_cap.duplication, 100, &info, &res);
+    HRESULT hr = g_cap.duplication->lpVtbl->AcquireNextFrame(g_cap.duplication, 10, &info, &res);
     
     if (hr == DXGI_ERROR_WAIT_TIMEOUT) return 0;
     if (FAILED(hr)) return 0;
@@ -106,6 +107,7 @@ void cleanup_shared_state() {
 }
 
 unsigned __stdcall capture_thread_func(void* arg) {
+    (void)arg;
     while (g_state.running) {
         static unsigned char* temp_buf = NULL;
         if (!temp_buf) temp_buf = malloc(g_state.width * g_state.height * 4);
@@ -123,6 +125,7 @@ unsigned __stdcall capture_thread_func(void* arg) {
 }
 
 unsigned __stdcall encoder_thread_func(void* arg) {
+    (void)arg;
     log_info("Encoder thread started.");
     unsigned char* local_enc_buf = malloc(g_state.width * g_state.height * 4);
     while (g_state.running) {
@@ -173,6 +176,11 @@ int main(void) {
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         log_fatal("Failed to initialize GLAD");
         return -1;
+    }
+
+    Font main_font;
+    if (!font_init(&main_font, "C:/Windows/Fonts/arial.ttf", 32.0f)) {
+        log_error("Failed to load font");
     }
 
     if (!init_capture()) return -1;
@@ -240,14 +248,16 @@ int main(void) {
             glTexCoord2f(0, 1); glVertex2f(-1, 1);
         glEnd();
 
-        if (ui_button(__LINE__, "START RECORD", -0.9f, 0.9f, 0.4f, 0.1f)) {
-            log_info("RECORD BUTTON PRESSED!");
+        if (ui_button(__LINE__, &main_font, "START RECORD", -0.9f, 0.9f, 0.4f, 0.1f)) {
+            log_info("Button clicked!");
         }
         glfwSwapBuffers(window);
     }
 
     g_state.running = false;
+    Sleep(100);
     cleanup_shared_state();
+    glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
 }

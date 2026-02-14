@@ -33,6 +33,7 @@ set(SOURCES
   src/logger.c
   src/encoder.c
   src/ui.c
+  src/font.c
   vendor/glad/src/glad.c
 )
 
@@ -42,6 +43,7 @@ set(HEADERS
   include/encoder.h
   include/threading.h
   include/ui.h
+  include/font.h
 )
 
 include_directories(${FFMPEG_PATH}/include)
@@ -53,6 +55,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/vendor/glfw/include
   ${PROJECT_SOURCE_DIR}/vendor/glad/include
+  ${PROJECT_SOURCE_DIR}/vendor
 )
 
 if (MSVC)
