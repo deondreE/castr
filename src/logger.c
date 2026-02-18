@@ -17,7 +17,7 @@ static const char* lvl_colors[] = {
 };
 
 void log_output(log_lvl level, const char* file, int line, const char* fmt, ...) {
-  time_t t = time(NULL);
+  const time_t t = time(NULL);
   struct tm *lt = localtime(&t);
 
   char time_buf[32];

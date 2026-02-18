@@ -6,6 +6,7 @@ build
 
 *.log
 *.err
+.idea
 
 .vscode/
 vendor/

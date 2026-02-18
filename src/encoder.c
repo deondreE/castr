@@ -39,7 +39,7 @@ void init_encoder(const char *filename, int width, int height) {
                                    width, height, AV_PIX_FMT_YUV420P,
                                    SWS_BICUBIC, NULL, NULL, NULL);
 
-    g_enc.out_file = fopen(filename, "wb");
+    fopen_s(&g_enc.out_file, filename, "wb");
     log_info("Encoder initialized: %s", filename);
 }
 
