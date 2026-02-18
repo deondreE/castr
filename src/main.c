@@ -359,7 +359,7 @@ int main(void) {
         return -1;
     }
 
-    init_encoder("output.h264", screen_w, screen_h);
+    init_encoder("recording.mkv", screen_w, screen_h);
     init_shared_state(screen_w, screen_h);
     init_compositor(screen_w, screen_h);
     init_pbos(screen_w, screen_h);
@@ -528,6 +528,7 @@ int main(void) {
 
     free(upload_buf);
     free(encoder_buf);
+    cleanup_encoder();
     free(g_state.frame_buffer);
     // free(g_state.encode_buffer);
     DeleteCriticalSection(&g_state.lock);

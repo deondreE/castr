@@ -10,6 +10,7 @@ build
 
 .vscode/
 vendor/
+.idea/
 
 .vs/
 *.suo
