@@ -307,6 +307,21 @@ static void init_compositor(int w, int h) {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+GLuint pbos[2];
+int pbo_index = 0;
+
+void init_pbos(int w, int h) {
+    int data_size = w * h * 4;
+    glGenBuffers(2, pbos);
+
+    for (size_t i = 0; i < 2; ++i)
+    {
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[i]);
+        glBufferData(GL_PIXEL_PACK_BUFFER, data_size, NULL, GL_STREAM_READ);
+    }
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+}
+
 static void flip_bgra_vertical(unsigned char* buf, int width, int height) {
     size_t         row_bytes = (size_t)width * 4;
     unsigned char* tmp       = malloc(row_bytes);
@@ -347,6 +362,7 @@ int main(void) {
     init_encoder("output.h264", screen_w, screen_h);
     init_shared_state(screen_w, screen_h);
     init_compositor(screen_w, screen_h);
+    init_pbos(screen_w, screen_h);
 
     unsigned cap_tid, enc_tid;
     g_capture_thread = (HANDLE)_beginthreadex(
@@ -408,9 +424,7 @@ int main(void) {
 
         if (has_frame) {
             glBindTexture(GL_TEXTURE_2D, desktop_tex);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, screen_w, screen_h,
-                            GL_BGRA, GL_UNSIGNED_BYTE, upload_buf);
-
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, screen_w, screen_h, GL_BGRA, GL_UNSIGNED_BYTE, upload_buf);
             glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
             glViewport(0, 0, screen_w, screen_h);
             glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -424,15 +438,14 @@ int main(void) {
 
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, desktop_tex);
-
             glPushMatrix();
             glTranslatef(desktop_source.x, desktop_source.y, 0);
             glScalef(desktop_source.scale, desktop_source.scale, 1.0f);
             glBegin(GL_QUADS);
-                glTexCoord2f(0, 1); glVertex2f(0,                    0);
-                glTexCoord2f(1, 1); glVertex2f(desktop_source.width,  0);
-                glTexCoord2f(1, 0); glVertex2f(desktop_source.width,  desktop_source.height);
-                glTexCoord2f(0, 0); glVertex2f(0,                    desktop_source.height);
+            glTexCoord2f(0, 1); glVertex2f(0, 0);
+            glTexCoord2f(1, 1); glVertex2f(desktop_source.width, 0);
+            glTexCoord2f(1, 0); glVertex2f(desktop_source.width, desktop_source.height);
+            glTexCoord2f(0, 0); glVertex2f(0, desktop_source.height);
             glEnd();
             glPopMatrix();
 
@@ -441,10 +454,10 @@ int main(void) {
                 glColor3f(0.0f, 0.1f, 0.0f);
                 glLineWidth(2.0f);
                 glBegin(GL_LINE_LOOP);
-                    glVertex2f(desktop_source.x, desktop_source.y);
-                    glVertex2f(desktop_source.x + render_w, desktop_source.y);
-                    glVertex2f(desktop_source.x + render_w, desktop_source.y + render_h);
-                    glVertex2f(desktop_source.x, desktop_source.y + render_h);
+                glVertex2f(desktop_source.x, desktop_source.y);
+                glVertex2f(desktop_source.x + render_w, desktop_source.y);
+                glVertex2f(desktop_source.x + render_w, desktop_source.y + render_h);
+                glVertex2f(desktop_source.x, desktop_source.y + render_h);
                 glEnd();
                 glLineWidth(1.0f);
                 glEnable(GL_TEXTURE_2D);
@@ -455,15 +468,24 @@ int main(void) {
 
             glDisable(GL_TEXTURE_2D);
 
-            glReadPixels(0, 0, screen_w, screen_h,
-                         GL_BGRA, GL_UNSIGNED_BYTE, encoder_buf);
+            pbo_index = (pbo_index + 1) % 2;
+            int next_index = (pbo_index + 1) % 2;
+
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[pbo_index]);
+            glReadPixels(0, 0, screen_w, screen_h, GL_BGRA, GL_UNSIGNED_BYTE, 0);
+
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, pbos[next_index]);
+            void* ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+            if (ptr) {
+                memcpy(encoder_buf, ptr, frame_bytes);
+                glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+            }
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
             flip_bgra_vertical(encoder_buf, screen_w, screen_h);
 
             EnterCriticalSection(&g_state.lock);
-            // memcpy(g_state.encode_buffer, encoder_buf, frame_bytes);
             g_state.encoder_has_work = true;
             WakeAllConditionVariable(&g_state.data_ready);
             LeaveCriticalSection(&g_state.lock);
