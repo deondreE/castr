@@ -392,26 +392,27 @@ int main(void) {
     float render_h = desktop_source.height - desktop_source.scale;
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        ui_update(window);
+        ui_begin_frame(window);
+
+        float render_w = desktop_source.width * desktop_source.scale;
+        float render_h = desktop_source.height * desktop_source.scale;
+
+        bool is_hovering_desktop = (ui.mouse_x >= desktop_source.x &&
+            ui.mouse_x <= desktop_source.x + render_w &&
+            ui.mouse_y >= desktop_source.y &&
+            ui.mouse_y <= desktop_source.y + render_h);
 
         if (ui.mouse_down) {
             if (ui.dragging_item == 0 && ui.mouse_clicked) {
-                if (ui.mouse_x >= desktop_source.x && ui.mouse_x <= desktop_source.x + render_w &&
-                    ui.mouse_y >= desktop_source.y && ui.mouse_y <= desktop_source.y + render_h) {
+                if (is_hovering_desktop) {
                     ui.dragging_item = 1;
                 }
             }
-
             if (ui.dragging_item == 1) {
-                float delta_x = (float)(ui.mouse_x - ui.last_mouse_x);
-                float delta_y = (float)(ui.mouse_y - ui.last_mouse_y);
-
-                desktop_source.x += delta_x;
-                desktop_source.y += delta_y;
+                desktop_source.x += (float)(ui.mouse_x - ui.last_mouse_x);
+                desktop_source.y += (float)(ui.mouse_y - ui.last_mouse_y);
             }
         }
-        bool is_hovering_desktop = (ui.mouse_x >= desktop_source.x && ui.mouse_x <= desktop_source.x + render_w &&
-                            ui.mouse_y >= desktop_source.y && ui.mouse_y <= desktop_source.y + render_h);
 
         bool has_frame = false;
         EnterCriticalSection(&g_state.lock);
@@ -425,6 +426,7 @@ int main(void) {
         if (has_frame) {
             glBindTexture(GL_TEXTURE_2D, desktop_tex);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, screen_w, screen_h, GL_BGRA, GL_UNSIGNED_BYTE, upload_buf);
+
             glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
             glViewport(0, 0, screen_w, screen_h);
             glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -442,16 +444,16 @@ int main(void) {
             glTranslatef(desktop_source.x, desktop_source.y, 0);
             glScalef(desktop_source.scale, desktop_source.scale, 1.0f);
             glBegin(GL_QUADS);
-            glTexCoord2f(0, 1); glVertex2f(0, 0);
-            glTexCoord2f(1, 1); glVertex2f(desktop_source.width, 0);
-            glTexCoord2f(1, 0); glVertex2f(desktop_source.width, desktop_source.height);
-            glTexCoord2f(0, 0); glVertex2f(0, desktop_source.height);
+            glTexCoord2f(0, 0); glVertex2f(0, 0);
+            glTexCoord2f(1, 0); glVertex2f(desktop_source.width, 0);
+            glTexCoord2f(1, 1); glVertex2f(desktop_source.width, desktop_source.height);
+            glTexCoord2f(0, 1); glVertex2f(0, desktop_source.height);
             glEnd();
             glPopMatrix();
 
             if (ui.dragging_item == 1 || is_hovering_desktop) {
                 glDisable(GL_TEXTURE_2D);
-                glColor3f(0.0f, 0.1f, 0.0f);
+                glColor3f(0.0f, 1.0f, 0.0f);
                 glLineWidth(2.0f);
                 glBegin(GL_LINE_LOOP);
                 glVertex2f(desktop_source.x, desktop_source.y);
@@ -463,10 +465,12 @@ int main(void) {
                 glEnable(GL_TEXTURE_2D);
             }
 
-            if (ui_button(1, &main_font, "MOVE", 20, 20, 180, 60))
-                desktop_source.x += 10;
-
-            glDisable(GL_TEXTURE_2D);
+            ui_draw_rect(10, 10, 240, 150, (UIColor) { 0.0f, 0.0f, 0.0f });
+            ui_slider(10, &desktop_source.scale, 0.1f, 1.0f, 20, 40, 200);
+            if (ui_button(1, &main_font, "Reset Pos", 20, 80, 200, 40)) {
+                desktop_source.x = 0;
+                desktop_source.y = 0;
+            }
 
             pbo_index = (pbo_index + 1) % 2;
             int next_index = (pbo_index + 1) % 2;
@@ -481,8 +485,8 @@ int main(void) {
                 glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
             }
             glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
             flip_bgra_vertical(encoder_buf, screen_w, screen_h);
 
             EnterCriticalSection(&g_state.lock);
@@ -492,7 +496,6 @@ int main(void) {
         }
 
         glViewport(0, 0, window_w, window_h);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
@@ -504,14 +507,14 @@ int main(void) {
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, g_canvas_tex);
         glBegin(GL_QUADS);
-            glTexCoord2f(0, 0); glVertex2f(-1, -1);
-            glTexCoord2f(1, 0); glVertex2f( 1, -1);
-            glTexCoord2f(1, 1); glVertex2f( 1,  1);
-            glTexCoord2f(0, 1); glVertex2f(-1,  1);
+        glTexCoord2f(0, 0); glVertex2f(-1, -1);
+        glTexCoord2f(1, 0); glVertex2f(1, -1);
+        glTexCoord2f(1, 1); glVertex2f(1, 1);
+        glTexCoord2f(0, 1); glVertex2f(-1, 1);
         glEnd();
-        glDisable(GL_TEXTURE_2D);
 
         glfwSwapBuffers(window);
+        ui_end_frame();
 
         if (!has_frame) Sleep(1);
     }
@@ -532,6 +535,7 @@ int main(void) {
     free(g_state.frame_buffer);
     // free(g_state.encode_buffer);
     DeleteCriticalSection(&g_state.lock);
+    ui_end_frame();
 
     if (g_cap.staging_tex) g_cap.staging_tex->lpVtbl->Release(g_cap.staging_tex);
     if (g_cap.duplication) g_cap.duplication->lpVtbl->Release(g_cap.duplication);
